@@ -2,13 +2,13 @@
   <img src="docs/hero.png" alt="Clipline — turn livestream VOD moments into shortform clips" width="100%">
 </p>
 
-**Turn livestream VOD moments into shortform clips — batch crop, faster-whisper auto-captions, ASS/SRT export. A six-hour stream becomes a tray of ready-to-post shorts.**
+**Turn livestream VOD moments into shortform clips — facecam-stacked verticals in 1080p or 4K, auto-captions, ASS/SRT export. A six-hour stream becomes a tray of ready-to-post shorts.**
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white">
   <img src="https://img.shields.io/badge/PySide6-Native-41cd52?logo=qt&logoColor=white">
   <img src="https://img.shields.io/badge/FFmpeg-Powered-orange?logo=ffmpeg&logoColor=white">
-  <img src="https://img.shields.io/badge/faster--whisper-captions-5fb0c8">
+  <img src="https://img.shields.io/badge/whisper.cpp-captions-5fb0c8">
   <img src="https://img.shields.io/badge/License-AGPL_v3-blue">
 </p>
 
@@ -22,18 +22,18 @@
 - Surface all those moments in a `Session Inbox`.
 - Prep moments as shorts with streamer-specific presets:
   - `Gameplay Focus`
-  - `Facecam Top`
+  - `Facecam Top` — real stacked composition: your facecam (guide-drawn, rounded corners) over the game on a blurred backdrop, captions burned into the dark zone. 1080x1920 and 4K 2160x3840.
   - `Baked Text Punch`
+- **Create Clip from Moment** — mark a range, click once: the clip is cut, the vertical facecam layout switches on, and you're walked to captions.
 - Batch-prep a whole inbox and batch-queue prepared shorts for longform.
 - Stitch clips into a preview sequence, transcribe captions, and export.
 - Build a horizontal longform derivative from queued prepared shorts.
-- Use a saved facecam guide instead of auto-detection for recurring stream layouts.
+- Draw a facecam guide once over a grabbed frame — remembered every session for recurring stream layouts, with a live preview of the vertical composition.
 
 ### Captions
 
-- 1-click caption dependency install for `faster-whisper` + `torch`.
-- Managed captioning virtualenv owned by the app.
-- Optional `pyannote.audio` install for diarization.
+- 1-click caption engine download (whisper.cpp, ~75 MB) — no Python, no pip, no terminal.
+- Optional speaker separation (sherpa-onnx, ~50 MB), same one-click model.
 - Editable captions with speaker colors, ASS/SRT export, and burn-in control.
 
 ---

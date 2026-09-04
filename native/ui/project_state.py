@@ -47,6 +47,7 @@ class ProjectState(QObject):
     style_preset_changed = Signal(str)     # StylePreset.key
     format_preset_changed = Signal(str)    # FormatPreset.key
     captions_changed = Signal()            # caption words/speakers/positions changed
+    facecam_layout_changed = Signal(object)  # normalized layout dict | None
 
     def __init__(self) -> None:
         super().__init__()
@@ -60,6 +61,10 @@ class ProjectState(QObject):
         self._speakers: dict[str, dict] = {}
         self._line_overrides: dict[float, tuple[float, float]] = {}
         self._burn_captions: bool = False
+        # Normalized {enabled, x, y, w, h, game_mode} guide rect, or None.
+        # Survives source swaps on purpose — it describes the channel's
+        # stream layout, not one file.
+        self._facecam_layout: Optional[dict] = None
 
     @property
     def source(self) -> Optional[Path]:
@@ -172,3 +177,11 @@ class ProjectState(QObject):
         self._line_overrides = dict(line_overrides)
         self._burn_captions = bool(burn_in)
         self.captions_changed.emit()
+
+    @property
+    def facecam_layout(self) -> Optional[dict]:
+        return dict(self._facecam_layout) if self._facecam_layout else None
+
+    def set_facecam_layout(self, layout: Optional[dict]) -> None:
+        self._facecam_layout = dict(layout) if layout else None
+        self.facecam_layout_changed.emit(self.facecam_layout)

@@ -9,6 +9,7 @@ QSettings flag. The Project stage greets every launch.
 """
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -26,15 +27,26 @@ from PySide6.QtWidgets import (
 )
 
 from native.services.captions import build_clip_ass, escape_ass_path
+from native.services.composite import (
+    build_composite_export_args,
+    composite_geometry,
+    normalize_facecam_layout,
+)
 from native.services.export_presets import (
     build_clip_export_args,
     format_preset_by_key,
     style_preset_by_key,
 )
 from native.services.paths import DOWNLOADS_DIR, PROCESSING_DIR
-from native.services.settings import get_output_dir, load_settings, save_settings
+from native.services.settings import (
+    get_last_facecam_layout,
+    get_output_dir,
+    load_settings,
+    save_settings,
+)
 from native.services.tools import TOOLS
 from native.ui import theme
+from native.ui.facecam_dialog import FacecamGuideDialog
 from native.ui.project_state import Clip, ProjectState
 from native.ui.stages.inbox import InboxStage
 from native.ui.stages.ingest import IngestStage
@@ -71,6 +83,14 @@ class MainWindow(QMainWindow):
         self._icon_path = icon_path
         self._state = ProjectState()
 
+        # Facecam guide: the last-saved one describes the channel's stream
+        # layout, so it's applied once per session and survives source swaps.
+        saved_guide = get_last_facecam_layout()
+        if saved_guide:
+            self._state.set_facecam_layout(normalize_facecam_layout(saved_guide))
+        self._dims_source: Optional[Path] = None
+        self._dims: Optional[tuple[int, int]] = None
+
         self.setStyleSheet(theme.GLOBAL_QSS)
 
         # ---- Stages -----------------------------------------------------
@@ -83,6 +103,8 @@ class MainWindow(QMainWindow):
         self._ingest_stage = IngestStage(self._state, runner)
         self._ingest_stage.request_export.connect(self._export_marked_range)
         self._ingest_stage.request_download.connect(self._download_url)
+        self._ingest_stage.request_facecam_guide.connect(self._open_facecam_guide)
+        self._ingest_stage.request_create_moment.connect(self._create_moment_clip)
         self._inbox_stage = InboxStage(self._state, runner, ffmpeg)
         self._inbox_stage.request_export_clip.connect(self._export_clip)
         self._inbox_stage.request_remove_clip.connect(self._state.remove_clip)
@@ -116,6 +138,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self._progress)
 
         self._state.source_changed.connect(self._on_source_changed)
+        self._state.style_preset_changed.connect(self._on_style_preset_changed)
 
         # First-run guided tour fires when the first clip lands (ALERT §7: this
         # is mid-session, so QSettings-gating is allowed here — unlike launch).
@@ -298,9 +321,89 @@ class MainWindow(QMainWindow):
         style = style_preset_by_key(self._state.style_preset_key)
         fmt = format_preset_by_key(self._state.format_preset_key)
         subtitle = self._clip_subtitle(clip, fmt.width, fmt.height)
+        geom = self._composite_geometry(fmt) if style.key == "facecam_top" else None
+        if geom is not None:
+            return build_composite_export_args(
+                clip.start_ms, clip.end_ms, geom, subtitle_ass=subtitle,
+            )
         return build_clip_export_args(
             clip.start_ms, clip.end_ms, style, fmt, subtitle_ass=subtitle,
         )
+
+    # ────────────────────────────────────────────────────────────────────
+    # Facecam composite
+    # ────────────────────────────────────────────────────────────────────
+
+    def _composite_geometry(self, fmt) -> Optional[dict]:
+        """Geometry for the stacked layout, or None when it can't apply.
+
+        Needs an enabled guide, a portrait-ish format and a probeable
+        source; anything else falls back to the plain crop presets.
+        """
+        layout = self._state.facecam_layout
+        if not layout or not layout.get("enabled"):
+            return None
+        if fmt.height < fmt.width:  # landscape — stacking makes no sense
+            return None
+        dims = self._probe_source_dims()
+        if dims is None:
+            return None
+        return composite_geometry(dims[0], dims[1], layout, fmt.width, fmt.height)
+
+    def _probe_source_dims(self) -> Optional[tuple[int, int]]:
+        source = self._state.source
+        if source is None:
+            return None
+        if self._dims_source == source:
+            return self._dims
+        dims: Optional[tuple[int, int]] = None
+        try:
+            result = subprocess.run(
+                [self._ffprobe, "-v", "error", "-select_streams", "v:0",
+                 "-show_entries", "stream=width,height", "-of", "csv=p=0",
+                 str(source)],
+                capture_output=True, text=True, timeout=10,
+            )
+            parts = [int(p) for p in result.stdout.strip().split(",")]
+            if result.returncode == 0 and len(parts) == 2 and parts[0] > 0:
+                dims = (parts[0], parts[1])
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            dims = None
+        self._dims = dims
+        self._dims_source = source
+        return dims
+
+    def _on_style_preset_changed(self, key: str) -> None:
+        # Picking Facecam Top without a guide opens the picker directly —
+        # one modal, and Cancel simply means the crop fallback at render.
+        if key != "facecam_top" or self._state.facecam_layout:
+            return
+        if self._state.source is not None:
+            self._open_facecam_guide()
+
+    def _open_facecam_guide(self, position_s: object = None) -> None:
+        if self._state.source is None:
+            QMessageBox.information(
+                self, "No source",
+                "Load a video in the Ingest stage first — the guide is drawn "
+                "over a frame from your stream.",
+            )
+            return
+        dialog = FacecamGuideDialog(
+            self._state, self._ffmpeg, position_s=position_s, parent=self,
+        )
+        dialog.exec()
+
+    def _create_moment_clip(self, start_ms: int, end_ms: int) -> None:
+        """"Create Clip from Moment": clip in, signature style on, captions next."""
+        if self._state.source is None or start_ms >= end_ms:
+            return
+        idx = len(self._state.clips) + 1
+        self._state.add_clip(Clip(title=f"Clip {idx}", start_ms=start_ms, end_ms=end_ms))
+        if self._state.style_preset_key != "facecam_top":
+            self._state.set_style_preset("facecam_top")
+        self._set_stage(STAGE_SHORTS)
+        self._shorts_stage.focus_for_moment()
 
     def _export_clip(self, clip: Clip) -> None:
         source = self._state.source

@@ -4,12 +4,11 @@ Each preset maps a human label to a tuple of ffmpeg args. Keep this file as
 the single source of truth — UI widgets list presets by name from here, and
 the worker pipeline reads the args without knowing what they mean.
 
-Phase 4 ships the three streamer-focused recipes the legacy reel.js exposed
-(Gameplay Focus / Facecam Top / Baked Text Punch). The facecam-stacking and
-baked-text overlays in the legacy app were elaborate ffmpeg graphs that
-referenced a per-channel saved facecam guide; until that data model lands
-on the native branch the three recipes render distinct vertical crops with
-different crop biases so the picker is meaningfully visible in exports.
+"Facecam Top" is the signature vertical style: when a facecam guide is set
+it routes through ``native.services.composite`` (blur backdrop / game /
+rounded facecam stacked into 9:16); without a guide it falls back to the
+plain vertical crop below. "Gameplay Focus" and "Baked Text Punch" remain
+single-source crops.
 
 Aspect-ratio presets (Output stage) are separate from style presets — they
 control resolution + scale + pad, not the framing bias.
@@ -38,7 +37,11 @@ STYLE_PRESETS: list[StylePreset] = [
     StylePreset(
         key="facecam_top",
         label="Facecam Top",
-        description="9:16 with the top half biased high — preserves facecam framing on the upper third.",
+        description=(
+            "Your facecam stacked top-centre over the game on a blurred "
+            "backdrop — draw the guide once on the Ingest stage. Without a "
+            "guide this falls back to a plain high-biased vertical crop."
+        ),
         video_filter="crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:flags=lanczos,vignette=PI/8",
     ),
     StylePreset(
@@ -68,6 +71,13 @@ FORMAT_PRESETS: list[FormatPreset] = [
         description="1080x1920 vertical. The default for TikTok, Reels, Shorts.",
         width=1080,
         height=1920,
+    ),
+    FormatPreset(
+        key="shorts_4k",
+        label="Shorts 4K",
+        description="2160x3840 vertical — max-quality upload for TikTok / Shorts / Reels.",
+        width=2160,
+        height=3840,
     ),
     FormatPreset(
         key="portrait_feed",

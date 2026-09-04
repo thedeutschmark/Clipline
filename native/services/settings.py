@@ -53,3 +53,31 @@ def reset_output_dir() -> Path:
     save_settings(settings)
     DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     return DEFAULT_OUTPUT_DIR
+
+
+def save_facecam_layout(name: str, layout: dict) -> None:
+    """Store a named facecam guide and mark it as the last-used one.
+
+    The last-used marker is auto-applied when a new source loads — one
+    OBS layout per channel covers the common case.
+    """
+    key = str(name or "").strip() or "default"
+    settings = load_settings()
+    layouts = settings.get("facecam_layouts", {})
+    layouts[key] = dict(layout)
+    settings["facecam_layouts"] = layouts
+    settings["last_facecam_layout_name"] = key
+    save_settings(settings)
+
+
+def get_saved_facecam_layouts() -> dict[str, dict]:
+    return {k: dict(v) for k, v in load_settings().get("facecam_layouts", {}).items()}
+
+
+def get_last_facecam_layout() -> dict | None:
+    """The most recently saved guide, or None if nothing was ever saved."""
+    settings = load_settings()
+    name = settings.get("last_facecam_layout_name")
+    layouts = settings.get("facecam_layouts", {})
+    layout = layouts.get(name) if name else None
+    return dict(layout) if layout else None

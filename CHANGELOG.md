@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-09-04
+
+The signature flow, built: **create a vertical clip from a VOD moment** — facecam
+stacked over the game, captions you can edit, 4K export. *(Tag held for the manual
+render check.)*
+
+### Added
+- **Real vertical facecam composition** — "Facecam Top" is no longer a stand-in
+  crop. It composes a 9:16 frame from your stream: your facecam (cropped by a
+  guide you draw once, rounded corners) top-centre, the game layered below at
+  full width on a blurred, darkened backdrop, with the karaoke captions burned
+  into the dark zone. Works at 1080x1920 and **2160x3840 (new "Shorts 4K"
+  format preset)** — the layout math is fraction-based, so both come from the
+  same guide.
+- **Facecam guide dialog** (Ingest stage → "Facecam Guide…") — drag/resize a box
+  over your webcam on a grabbed frame, with a live preview of the exact vertical
+  composition while you drag. The game layer can auto-crop your facecam corner
+  out ("Avoid facecam") or show the full frame. Guides are remembered and
+  re-applied every session; drawing it once covers a recurring stream layout.
+- **"Create Clip from Moment"** (Ingest stage) — marks the range as a clip,
+  switches to the Facecam Top style and drops you on the caption stage with the
+  caption pass one click away. Nothing long-running ever auto-starts.
+
+### Changed
+- Picking "Facecam Top" without a guide now opens the guide dialog directly
+  (Cancel keeps the plain-crop fallback); the old crop preset remains the
+  fallback for landscape formats and missing guides.
+
 ## [0.2.5] - 2026-06-03
 
 ### Fixed

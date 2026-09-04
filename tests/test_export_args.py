@@ -19,5 +19,14 @@ class TestExportArgsSubtitle(unittest.TestCase):
         self.assertIn("crop=1080:1920", vf)  # ass comes AFTER scale/crop
 
 
+class TestFormatPresets(unittest.TestCase):
+    def test_shorts_4k_preset(self):
+        fmt = format_preset_by_key("shorts_4k")
+        self.assertEqual((fmt.width, fmt.height), (2160, 3840))
+
+    def test_unknown_format_falls_back_to_shorts(self):
+        self.assertEqual(format_preset_by_key("nope").key, "shorts")
+
+
 if __name__ == "__main__":
     unittest.main()

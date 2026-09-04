@@ -49,11 +49,12 @@ dependency. Needs a Twitch application Client ID (public client) via
 - **Twitch marker/clip → multi-clip import** — auto-populate the inbox from a
   VOD's markers / a channel's clips (Phase 3 bulk scope). Single-item download
   works today.
-- **Facecam guide overlay** — draggable rect on the preview (Phase 4).
-- **Caption burn-in at render** — the editor sets a burn-in flag, but the render
-  pipeline doesn't consume it yet.
 - **Token refresh** — device-flow tokens expire (~4h); on 401 the app prompts a
   reconnect rather than silently refreshing (public client has no secret).
+
+Shipped since this list was written: caption burn-in at render (v0.2.3) and the
+facecam guide overlay + real stacked composition (v0.2.6 —
+`native/services/composite.py` + `native/ui/facecam_dialog.py`).
 
 **Deviation from the written plan:** Phase 7 said "delete `static/` entirely,
 `datas = []`." We kept `static/favicon.ico` + `static/img/app-icon.svg` — the

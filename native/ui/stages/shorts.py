@@ -108,6 +108,23 @@ class ShortsStage(QWidget):
 
     # ── engine state ─────────────────────────────────────────────────
 
+    def focus_for_moment(self) -> None:
+        """Arrived via "Create Clip from Moment": point at the next step.
+
+        Nothing long-running auto-starts (a 6-hour VOD transcription is the
+        user's click to make) — the Run button just takes focus with a hint.
+        """
+        self._refresh_engine_state()
+        self._run_btn.setFocus()
+        if self._run_btn.isEnabled():
+            self._status.setText(
+                "Moment added — run the caption pass, then Output → Render."
+            )
+        else:
+            self._status.setText(
+                "Moment added — set up the captioning engine first."
+            )
+
     def _refresh_engine_state(self) -> None:
         ready = captions.available()
         if ready:

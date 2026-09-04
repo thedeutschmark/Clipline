@@ -109,6 +109,8 @@ class IngestStage(QWidget):
 
     request_export = Signal(int, int)   # start_ms, end_ms — wired by the window
     request_download = Signal(str)      # a URL to fetch via yt-dlp — wired by the window
+    request_facecam_guide = Signal(object)  # player position in seconds — window opens the dialog
+    request_create_moment = Signal(int, int)  # start_ms, end_ms — the one-click vertical flow
 
     def __init__(self, state: ProjectState, runner: JobRunner) -> None:
         super().__init__()
@@ -291,7 +293,8 @@ class IngestStage(QWidget):
 
         hint = QLabel(
             "Use Space to play/pause, I to mark in, O to mark out. "
-            "Then click Add Clip — the Output stage renders the marked range."
+            "Create Clip from Moment cuts the range, turns on the vertical "
+            "facecam layout and walks you to captions."
         )
         hint.setWordWrap(True)
         hint.setFixedWidth(320)
@@ -314,8 +317,14 @@ class IngestStage(QWidget):
         self._range_label.setProperty("mono", True)
         card_layout.addWidget(self._range_label)
 
-        self._add_btn = QPushButton("Add Clip")
-        self._add_btn.setProperty("primary", True)
+        self._moment_btn = QPushButton("Create Clip from Moment")
+        self._moment_btn.setProperty("primary", True)
+        self._moment_btn.setMinimumHeight(40)
+        self._moment_btn.setEnabled(False)
+        self._moment_btn.clicked.connect(self._on_create_moment)
+        card_layout.addWidget(self._moment_btn)
+
+        self._add_btn = QPushButton("Add Clip (plain)")
         self._add_btn.setEnabled(False)
         self._add_btn.clicked.connect(self._on_add_clip)
         card_layout.addWidget(self._add_btn)
@@ -328,6 +337,34 @@ class IngestStage(QWidget):
 
         card_layout.addStretch(1)
         column.addWidget(card)
+
+        # Vertical layout guide — drawn once over a frame, reused per render.
+        guide_card = QFrame()
+        guide_card.setObjectName("card")
+        guide_card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        guide_layout = QVBoxLayout(guide_card)
+        guide_layout.setContentsMargins(20, 18, 20, 18)
+        guide_layout.setSpacing(10)
+
+        guide_kicker = QLabel("VERTICAL LAYOUT")
+        guide_kicker.setProperty("kicker", True)
+        guide_layout.addWidget(guide_kicker)
+
+        self._guide_btn = QPushButton("Facecam Guide…")
+        self._guide_btn.setEnabled(False)
+        self._guide_btn.clicked.connect(self._on_facecam_guide)
+        guide_layout.addWidget(self._guide_btn)
+
+        guide_hint = QLabel(
+            "Draw the box over your webcam once — the Facecam Top style "
+            "stacks it above the game in every vertical render."
+        )
+        guide_hint.setWordWrap(True)
+        guide_hint.setFixedWidth(320)
+        guide_hint.setProperty("hint", True)
+        guide_layout.addWidget(guide_hint)
+
+        column.addWidget(guide_card)
 
         return column
 
@@ -360,7 +397,9 @@ class IngestStage(QWidget):
         self._out_btn.setEnabled(True)
         self._scrub.setEnabled(True)
         self._add_btn.setEnabled(True)
+        self._moment_btn.setEnabled(True)
         self._export_btn.setEnabled(True)
+        self._guide_btn.setEnabled(True)
 
     def _on_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
         if status == QMediaPlayer.MediaStatus.LoadedMedia:
@@ -435,6 +474,16 @@ class IngestStage(QWidget):
         idx = len(self._state.clips) + 1
         title = f"Clip {idx}"
         self._state.add_clip(Clip(title=title, start_ms=self._in_ms, end_ms=self._out_ms))
+
+    def _on_create_moment(self) -> None:
+        if self._state.source is None or self._duration_ms <= 0:
+            return
+        if self._out_ms <= self._in_ms:
+            return
+        self.request_create_moment.emit(self._in_ms, self._out_ms)
+
+    def _on_facecam_guide(self) -> None:
+        self.request_facecam_guide.emit(self._player.position() / 1000.0)
 
     def _on_export_marked(self) -> None:
         if self._out_ms <= self._in_ms:

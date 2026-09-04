@@ -33,5 +33,36 @@ class TestCaptionState(unittest.TestCase):
         self.assertEqual(self.state.caption_words[0]["text"], "hi")
 
 
+class TestFacecamLayoutState(unittest.TestCase):
+    def setUp(self):
+        self.state = ProjectState()
+
+    def test_defaults_to_none(self):
+        self.assertIsNone(self.state.facecam_layout)
+
+    def test_set_facecam_layout_emits_and_copies(self):
+        seen = {}
+        self.state.facecam_layout_changed.connect(
+            lambda layout: seen.setdefault("layout", layout)
+        )
+        layout = {"enabled": True, "x": 0.02, "y": 0.02, "w": 0.25, "h": 0.25,
+                  "game_mode": "avoid_facecam"}
+        self.state.set_facecam_layout(layout)
+        self.assertEqual(seen["layout"]["w"], 0.25)
+        self.assertEqual(self.state.facecam_layout["enabled"], True)
+        # defensive copy: mutating the caller's dict must not leak in
+        layout["w"] = 0.9
+        self.assertEqual(self.state.facecam_layout["w"], 0.25)
+        # and the property hands back a copy too
+        got = self.state.facecam_layout
+        got["h"] = 0.9
+        self.assertEqual(self.state.facecam_layout["h"], 0.25)
+
+    def test_clear_facecam_layout(self):
+        self.state.set_facecam_layout({"enabled": True, "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2})
+        self.state.set_facecam_layout(None)
+        self.assertIsNone(self.state.facecam_layout)
+
+
 if __name__ == "__main__":
     unittest.main()
