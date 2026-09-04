@@ -24,6 +24,12 @@ render check.)*
   composition while you drag. The game layer can auto-crop your facecam corner
   out ("Avoid facecam") or show the full frame. Guides are remembered and
   re-applied every session; drawing it once covers a recurring stream layout.
+- **Any facecam position and size composes safely** — center, side, tall, or
+  oversized guides all render sanely: the game cut uses true area loss (a
+  centered cam drops its rows instead of slicing half the game away), the
+  facecam band caps at 38% of frame height keeping its aspect, and the game
+  band is center-trimmed so it never runs past the caption zone. Swept across
+  the whole clamp space in tests plus rendered spot-checks.
 - **"Create Clip from Moment"** (Ingest stage) — marks the range as a clip,
   switches to the Facecam Top style and drops you on the caption stage with the
   caption pass one click away. Nothing long-running ever auto-starts.

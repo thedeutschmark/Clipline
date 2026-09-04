@@ -78,6 +78,24 @@ class TestGameCropRegion(unittest.TestCase):
         cam_y = round(0.78 * 1080)
         self.assertEqual(region["h"], cam_y)
 
+    def test_top_center_cam_uses_row_cut_not_asymmetric_side_cut(self):
+        # A centered cam costs ~62% of the frame cut from either side but
+        # only ~27% cut from its rows — the true-loss model must pick rows.
+        region = game_crop_region(1920, 1080, _guide(x=0.375, y=0.02))
+        self.assertEqual(region["x"], 0)
+        self.assertEqual(region["w"], 1920)
+        cam_bottom = round(0.02 * 1080) + 270
+        self.assertEqual(region["y"], cam_bottom)
+        self.assertEqual(region["h"], 1080 - cam_bottom)
+
+    def test_mid_height_side_cam_still_uses_side_cut(self):
+        # Cutting this cam's rows would keep only a sliver; the true side
+        # cost (edge past the cam) is far smaller, so the column goes.
+        region = game_crop_region(1920, 1080, _guide(x=0.02, y=0.4, w=0.25, h=0.2))
+        self.assertEqual(region["y"], 0)
+        self.assertEqual(region["h"], 1080)
+        self.assertEqual(region["x"], 38 + 480)
+
 
 class TestCompositeGeometry(unittest.TestCase):
     def test_reference_layout_numbers(self):
@@ -109,6 +127,48 @@ class TestCompositeGeometry(unittest.TestCase):
             self.assertEqual(geom["facecam"]["out_w"] % 2, 0)
             self.assertEqual(geom["facecam"]["out_h"] % 2, 0)
             self.assertEqual(geom["game"]["out_h"] % 2, 0)
+
+    def test_tall_guide_caps_facecam_band_and_keeps_aspect(self):
+        # A 0.08x0.70 guide would scale to a band taller than the frame —
+        # it caps at 38% of out_h instead, shrinking width to keep aspect.
+        geom = composite_geometry(1920, 1080, _guide(x=0.02, y=0.02, w=0.08, h=0.7), 1080, 1920)
+        face = geom["facecam"]
+        self.assertEqual(face["out_h"], 730)  # 0.38 * 1920, evened
+        self.assertAlmostEqual(
+            face["out_w"] / face["out_h"], (0.08 * 1920) / (0.7 * 1080), places=2
+        )
+
+    def test_big_guide_game_band_stays_out_of_caption_zone(self):
+        # A big corner cam pushes the game band down; it must be cropped to
+        # fit above the caption zone instead of running off the frame.
+        geom = composite_geometry(1920, 1080, _guide(x=0.02, y=0.02, w=0.4, h=0.7), 1080, 1920)
+        game = geom["game"]
+        self.assertLessEqual(game["y"] + game["out_h"], int(0.82 * 1920) + 2)
+        self.assertLess(game["crop_h"], 1080)  # center-trimmed to fit
+        self.assertEqual(game["crop_w"], 1114)  # cam-free right column
+
+    def test_every_normalized_guide_composes_safely(self):
+        # Sweep the whole clamp space coarsely: nothing may overflow the
+        # frame or land negative, at every portrait format.
+        xs = (0.0, 0.2, 0.4, 0.6, 0.75)
+        ws = (0.08, 0.2, 0.4, 0.7)
+        for x in xs:
+            for y in xs:
+                for w in ws:
+                    for h in ws:
+                        layout = normalize_facecam_layout(
+                            {"enabled": True, "x": x, "y": y, "w": w, "h": h}
+                        )
+                        for out_w, out_h in ((1080, 1920), (2160, 3840)):
+                            with self.subTest(x=x, y=y, w=w, h=h, out=(out_w, out_h)):
+                                geom = composite_geometry(1920, 1080, layout, out_w, out_h)
+                                f, g = geom["facecam"], geom["game"]
+                                self.assertGreater(f["out_w"], 0)
+                                self.assertGreater(f["out_h"], 0)
+                                self.assertGreater(g["crop_w"], 1)
+                                self.assertGreater(g["crop_h"], 1)
+                                self.assertLessEqual(f["y"] + f["out_h"], out_h)
+                                self.assertLessEqual(g["y"] + g["out_h"], int(0.82 * out_h) + 2)
 
 
 class TestCompositeFilterComplex(unittest.TestCase):

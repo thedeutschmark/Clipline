@@ -30,6 +30,12 @@ TOP_BUFFER_FRAC = 0.03     # gap above the facecam layer / out_h
 GAP_FRAC = 0.03            # gap between facecam bottom and game top / out_h
 FACECAM_RADIUS_FRAC = 0.04 # corner radius / facecam width
 
+# Guards so any guide within the normalize clamps composes sanely — a tall
+# facecam caps its band instead of running past the frame, and the game band
+# never invades the caption zone at the bottom.
+FACECAM_MAX_BAND_FRAC = 0.38  # facecam band height cap / out_h
+GAME_BOTTOM_LIMIT_FRAC = 0.82  # game band bottom cap / out_h (captions below)
+
 # Legacy clamp bounds, ported from reel.py's guide model.
 _MIN_EXTENT = 0.08
 _MAX_EXTENT = 0.70
@@ -75,7 +81,11 @@ def game_crop_region(src_w: int, src_h: int, layout: dict, game_mode: Optional[s
     """Pick the source crop for the game layer, in source pixels.
 
     ``avoid_facecam`` cuts whichever strip — the facecam's side column or
-    its rows — loses the least game area, keeping the cam-free remainder.
+    its rows — truly costs less game area, keeping the cam-free remainder.
+    The cost of a side cut is "from the frame edge past the cam" (a cam at
+    the far edge only costs its own width; one near the middle costs almost
+    half the frame), and likewise for rows — so center-ish cams correctly
+    fall back to a row cut instead of slicing the game asymmetrically.
     """
     mode = game_mode or layout.get("game_mode", "avoid_facecam")
     if mode == "full_frame":
@@ -86,15 +96,15 @@ def game_crop_region(src_w: int, src_h: int, layout: dict, game_mode: Optional[s
     cam_w = int(round(layout["w"] * src_w))
     cam_h = int(round(layout["h"] * src_h))
 
-    side_loss = cam_w / src_w
-    vert_loss = cam_h / src_h
+    side_loss = min((cam_x + cam_w) / src_w, 1.0 - cam_x / src_w)
+    vert_loss = min((cam_y + cam_h) / src_h, 1.0 - cam_y / src_h)
     if side_loss <= vert_loss:
-        # Cut the cam's side column; keep the opposite side.
+        # Cut the cam's side column; keep the wider cam-free side.
         if cam_x + cam_w / 2 < src_w / 2:
             x = min(src_w, cam_x + cam_w)
             return {"x": x, "y": 0, "w": src_w - x, "h": src_h}
         return {"x": 0, "y": 0, "w": max(0, cam_x), "h": src_h}
-    # Cut the cam's rows; keep the opposite side.
+    # Cut the cam's rows; keep the taller cam-free band.
     if cam_y + cam_h / 2 < src_h / 2:
         y = min(src_h, cam_y + cam_h)
         return {"x": 0, "y": y, "w": src_w, "h": src_h - y}
@@ -109,18 +119,34 @@ def composite_geometry(src_w: int, src_h: int, layout: dict, out_w: int, out_h: 
     """Every pixel number the filter graph needs, in output space.
 
     All sizing is fraction-based so the same layout renders identically
-    (modulo rounding) at 1080x1920 and 2160x3840.
+    (modulo rounding) at 1080x1920 and 2160x3840. Any guide inside the
+    normalize clamps composes sanely: a very tall facecam caps its band
+    height (keeping its aspect), and a game band that would run past the
+    caption zone is center-cropped vertically to fit.
     """
     game = game_crop_region(src_w, src_h, layout)
-    game_out_h = _even(out_w * game["h"] / game["w"])
 
     cam_w = int(round(layout["w"] * src_w))
     cam_h = int(round(layout["h"] * src_h))
     face_out_w = _even(FACECAM_WIDTH_FRAC * out_w)
     face_out_h = _even(face_out_w * (cam_h / cam_w)) if cam_w else face_out_w
+    max_band_h = _even(FACECAM_MAX_BAND_FRAC * out_h)
+    if face_out_h > max_band_h:  # tall guide: shrink to the cap, keep aspect
+        face_out_h = max_band_h
+        face_out_w = _even(face_out_h * (cam_w / cam_h)) if cam_h else face_out_w
     face_x = (out_w - face_out_w) // 2
     face_y = int(round(TOP_BUFFER_FRAC * out_h))
     game_y = face_y + face_out_h + int(round(GAP_FRAC * out_h))
+
+    # Fit the game band: never past the caption zone, no distortion — the
+    # crop region itself is trimmed vertically (centered) to the space left.
+    avail_h = _even(GAME_BOTTOM_LIMIT_FRAC * out_h) - game_y
+    game_out_h = _even(out_w * game["h"] / game["w"])
+    if avail_h > 0 and game_out_h > avail_h:
+        trimmed_h = max(2, int(round(game["w"] * avail_h / out_w)))
+        trim = max(0, game["h"] - trimmed_h) // 2
+        game = {**game, "y": game["y"] + trim, "h": min(game["h"], trimmed_h)}
+        game_out_h = avail_h
 
     return {
         "out_w": out_w,
